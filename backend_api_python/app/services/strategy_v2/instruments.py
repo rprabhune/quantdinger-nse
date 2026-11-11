@@ -19,6 +19,8 @@ _MARKETS = {
     "forex": "Forex",
     "futures": "Futures",
     "moex": "MOEX",
+    "nsestock": "NSEStock",
+    "nse": "NSEStock",
 }
 _CRYPTO_MARKET_TYPES = {"spot", "swap"}
 
@@ -96,6 +98,8 @@ def infer_market(symbol: str) -> str:
         return ""
     if "/" in value or value.endswith("USDT") or value.endswith("USDC"):
         return "Crypto"
+    if value.endswith(".NS"):
+        return "NSEStock"
     if value.endswith(".HK") or value.endswith(".XHKG"):
         return "HKStock"
     if value.endswith((".SH", ".SZ", ".BJ", ".XSHG", ".XSHE", ".XBJS")):

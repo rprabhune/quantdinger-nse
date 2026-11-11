@@ -31,7 +31,7 @@ from typing import Any, Iterable, List, Set
 
 
 _KNOWN_MARKETS = frozenset({
-    'Crypto', 'USStock', 'CNStock', 'HKStock', 'Forex', 'Futures', 'MOEX',
+    'Crypto', 'USStock', 'NSEStock', 'CNStock', 'HKStock', 'Forex', 'Futures', 'MOEX',
 })
 
 
@@ -65,6 +65,8 @@ def is_market_visible(market: str) -> bool:
     if whitelist:
         return m in whitelist
 
+    if m == 'NSEStock':
+        return _flag('SHOW_NSE_STOCK', 'false')
     if m == 'CNStock':
         return _flag('SHOW_CN_STOCK', 'false')
     if m == 'HKStock':

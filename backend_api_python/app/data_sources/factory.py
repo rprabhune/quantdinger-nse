@@ -69,6 +69,9 @@ _MARKET_ALIASES: Dict[str, str] = {
     "rustocks": "MOEX",
     "russianstock": "MOEX",
     "russia": "MOEX",
+    "nsestock": "NSEStock",
+    "nse_stock": "NSEStock",
+    "nse": "NSEStock",
 }
 
 
@@ -84,7 +87,7 @@ class DataSourceFactory:
     _noise_interval_sec = _env_positive_int("LOG_DEDUPE_INTERVAL_SEC", 60)
     
     # Markets that pass through normalize_market unchanged.
-    _CANONICAL_MARKETS = ("Crypto", "Forex", "Futures", "USStock", "CNStock", "HKStock", "MOEX")
+    _CANONICAL_MARKETS = ("Crypto", "Forex", "Futures", "USStock", "CNStock", "HKStock", "MOEX", "NSEStock")
 
     @classmethod
     def _log_limited(cls, level: str, key: str, message: str, *args: Any) -> None:
@@ -192,6 +195,9 @@ class DataSourceFactory:
         elif market == 'HKStock':
             from app.data_sources.hk_stock import HKStockDataSource
             return HKStockDataSource()
+        elif market == 'NSEStock':
+            from app.data_sources.nse_stock import NSEStockDataSource
+            return NSEStockDataSource()
         elif market == 'USStock':
             from app.data_sources.us_stock import USStockDataSource
             return USStockDataSource()

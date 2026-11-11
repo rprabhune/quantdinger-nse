@@ -13,6 +13,7 @@ CALENDAR_BY_MARKET = {
     "HKStock": "XHKG",
     "AStock": "XSHG",
     "CNStock": "XSHG",
+    "NSEStock": "NSE_RESEARCH_2025_2026",
 }
 
 
@@ -33,6 +34,8 @@ def equity_data_market(market: str, product=None, api_family: str = "") -> str:
 def equity_bar_session_date(value, market: str):
     stamp = pd.Timestamp(value)
     stamp = stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp.tz_convert("UTC")
+    if market == "NSEStock":
+        return stamp.tz_convert("Asia/Kolkata").date()
     return (stamp.tz_convert("Asia/Hong_Kong") if market == "HKStock" else stamp).date()
 
 
@@ -312,6 +315,9 @@ def _is_period_end(sessions, index: int, frequency: str) -> bool:
 
 
 def _calendar(market: str):
+    if str(market or "").strip() == "NSEStock":
+        from app.services.nse_research_calendar import NSEResearchCalendar
+        return NSEResearchCalendar()
     try:
         import exchange_calendars as exchange_calendars
     except ImportError as exc:

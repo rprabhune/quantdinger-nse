@@ -21,6 +21,7 @@ from app.services.broker_market_policy import list_supported_brokers_for_market
 MARKET_ORDER = [
     "Crypto",
     "USStock",
+    "NSEStock",
     "CNStock",
     "HKStock",
     "Forex",
@@ -65,6 +66,24 @@ MARKET_MODULES: Dict[str, MarketModule] = {
             ),
         ],
         supports={"spot": True, "swap": True, "short": True, "session": "24/7"},
+    ),
+    "NSEStock": MarketModule(
+        key="NSEStock",
+        label="NSE India (research)",
+        description="Indian NSE equities using daily historical data; no broker execution.",
+        asset_class="equity",
+        symbol_hint="SBIN.NS",
+        base_currency="INR",
+        features=["research"],
+        data_requirements=[
+            DataRequirement(
+                key="yfinance_nse_daily",
+                label="Yahoo Finance NSE daily historical candles",
+                built_in=True,
+                purpose="research-only daily OHLCV",
+            ),
+        ],
+        supports={"spot": True, "swap": False, "short": False, "session": "exchange-hours"},
     ),
     "USStock": MarketModule(
         key="USStock",
@@ -266,6 +285,8 @@ def _enabled_from_env(env: Mapping[str, str], market: str) -> bool:
     if raw:
         allowed = {part.strip() for part in raw.split(",") if part.strip()}
         return market in allowed
+    if market == "NSEStock":
+        return _flag(env, "SHOW_NSE_STOCK", "false")
     if market == "CNStock":
         return _flag(env, "SHOW_CN_STOCK", "false")
     if market == "HKStock":
