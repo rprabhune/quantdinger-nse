@@ -8,7 +8,10 @@ adjacent regular sessions and apply that SAME factor to all four official
 prices. Reject if Yahoo adjustment factors change across the missing session
 or if the source adapter's surrounding adjusted closes disagree with Yahoo.
 For the November 2026 special session require factor 1, preserving the
-previous, stricter Phase 2D safeguard.
+previous, stricter Phase 2D safeguard. The missing March 2025 raw candle
+also needs the future share-count adjustment already embedded in Yahoo's
+historical OHLCV (currently pinned only for two verified corporate actions).
+Reject surrounding-day price discontinuities rather than silently merging.
 
 Does not write data, place orders, or download official bhavcopies. This is
 NOT comprehensive corporate-action, historical-data, or execution certification.
@@ -38,6 +41,49 @@ _APPROVED = {
 _MAX_CSV_BYTES = 16_000_000
 _FIELDS = frozenset({"TckrSymb", "SctySrs", "TradDt", "OpnPric", "HghPric", "LwPric", "ClsPric", "TtlTradgVol"})
 _NSE_FILENAME = re.compile(r"(?:^|/)BhavCopy_NSE_CM_0_0_0_(\d{8})_F_0000\.csv$", re.I)
+
+# Explicitly verified future share-count changes, as of the 2026-11-11
+# research snapshot. Yahoo's historical Close AND Volume are already
+# expressed in post-action share units, even with auto_adjust=False.
+# The raw NSE bhavcopy is in as-traded units on its original date.
+# Do not infer missing corporate actions from one-day price jumps.
+# (Symbol, first post-action trading date, post-action shares per old share)
+_VERIFIED_SHARE_ACTIONS = (
+    ("HDFCBANK", date(2025, 8, 26), 2.0),  # 1:1 bonus; record date 2025-08-27
+    ("KOTAKBANK", date(2026, 1, 14), 5.0), # face-value split Rs 5 -> Rs 1
+)
+_MAX_NEIGHBOR_CLOSE_CHANGE = 0.25  # fail-closed threshold, NOT a correction
+
+
+def _post_action_share_multiplier(symbol: str, day: date) -> float:
+    """Pinned share multiplier after day, matching the Yahoo snapshot basis."""
+    factor = 1.0
+    for ticker, ex_date, new_per_old in _VERIFIED_SHARE_ACTIONS:
+        if symbol == ticker and day < ex_date:
+            factor *= new_per_old
+    return factor
+
+
+def _validate_close_continuity(results, day, symbol, candidate):
+    """Reject obvious raw-vs-adjusted spikes; do not synthesize market prices."""
+    previous, following = _APPROVED[day]
+    close = float(candidate["close"])
+    for neighbor in (previous, following):
+        reference = results.get(_epoch(neighbor))
+        if reference is None:
+            raise NSEOfficialOverlayError(
+                f"Missing adjusted neighboring candle for {symbol}: {neighbor}"
+            )
+        neighbor_close = float(reference["close"])
+        if not math.isfinite(neighbor_close) or neighbor_close <= 0:
+            raise NSEOfficialOverlayError(f"Invalid neighboring close for {symbol}: {neighbor}")
+        move = abs(close / neighbor_close - 1.0)
+        if move > _MAX_NEIGHBOR_CLOSE_CHANGE:
+            raise NSEOfficialOverlayError(
+                f"Official-adjusted close discontinuity {symbol} {day}: "
+                f"{close:.6f} vs {neighbor}={neighbor_close:.6f} ({move:.1%}); "
+                "missing corporate action or corrupt provider history"
+            )
 
 
 class NSEOfficialOverlayError(ValueError):
@@ -244,12 +290,23 @@ def merge_official_special_candle(
         official = read_official_bhavcopy(path, expected_date=day)
         if raw_symbol not in official:
             raise NSEOfficialOverlayError(f"Official NSE EQ record absent: {raw_symbol} on {day}")
-        multiplier = _adjacent_factor(provider, results, day)
+        # Adj Close / Close only captures Yahoo's remaining *dividend*
+        # adjustment. Yahoo's historical Close already includes future
+        # split/bonus scaling. Align official raw OHLC and volume to that
+        # same share basis, using only explicitly verified actions.
+        dividend_multiplier = _adjacent_factor(provider, results, day)
+        share_multiplier = _post_action_share_multiplier(raw_symbol, day)
+        price_multiplier = dividend_multiplier / share_multiplier
         raw = official[raw_symbol]
         candidate = {
             **raw,
-            **{k: float(raw[k]) * multiplier for k in ("open", "high", "low", "close")},
+            **{k: float(raw[k]) * price_multiplier for k in ("open", "high", "low", "close")},
+            "volume": float(raw["volume"]) * share_multiplier,
         }
+        if not all(math.isfinite(float(candidate[k])) and float(candidate[k]) > 0
+                   for k in ("open", "high", "low", "close", "volume")):
+            raise NSEOfficialOverlayError(f"Invalid adjusted official candle for {raw_symbol} {day}")
+        _validate_close_continuity(results, day, raw_symbol, candidate)
         if stamp in results:
             existing = results[stamp]
             if any(not _close_equal(float(existing[k]), float(candidate[k]))
